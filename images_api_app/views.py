@@ -66,6 +66,12 @@ class UserProfileListView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAdminUser]
 
 
+class UserProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = UserProfile.objects.all()
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+
 class ImageUploadView(generics.CreateAPIView):
     """
     Upload JPG or PNG image.
