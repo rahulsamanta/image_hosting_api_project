@@ -1,6 +1,9 @@
 from django.urls import path
 
-from .views import *
+from .views import (
+    AccountTierListView, AccountTierDetailView, ImageUploadView, UserImagesListView,
+    GenerateExpiringLinkView, ThumbnailSizeListView, ThumbnailSizeDetailView, serve_image
+)
 
 urlpatterns = [
     path('account-tier/', AccountTierListView.as_view(), name='account_tier_list'),

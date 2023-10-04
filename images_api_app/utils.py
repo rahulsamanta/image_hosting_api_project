@@ -1,3 +1,5 @@
+import os
+
 from django.urls import reverse
 from django.conf import settings
 from itsdangerous import URLSafeTimedSerializer
@@ -20,3 +22,9 @@ def get_expiring_image_link(request, obj):
                 serve_image_url = reverse('serve_image', args=[signed_url])
                 return request.build_absolute_uri(serve_image_url)
     return None
+
+
+def is_valid_file_extension(file_name):
+    valid_extensions = ['.jpeg', '.jpg', '.png']
+    ext = os.path.splitext(file_name)[1].lower()
+    return ext in valid_extensions

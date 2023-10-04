@@ -11,7 +11,7 @@ from django.dispatch import receiver
 from django.db.models.signals import post_save
 from PIL import Image as PILImage
 
-from .utils import generate_signed_url
+from .utils import generate_signed_url, is_valid_file_extension
 
 
 logging.basicConfig(filename='image_api_app.log', level=logging.ERROR)
@@ -26,7 +26,7 @@ class ThumbnailSize(models.Model):
 
 class AccountTier(models.Model):
     name = models.CharField(max_length=100)
-    thumbnail_sizes = models.ManyToManyField(ThumbnailSize)
+    thumbnail_sizes = models.ManyToManyField(ThumbnailSize, blank=True)
     allow_original_link = models.BooleanField(default=False)
     allow_expiring_link = models.BooleanField(default=False)
 
@@ -46,20 +46,13 @@ class UserProfile(models.Model):
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
         UserProfile.objects.create(user=instance)
-    instance.userprofile.save()
-
-
-@receiver(post_save, sender=User)
-def save_user_profile(sender, instance, **kwargs):
-    instance.userprofile.save()
 
 
 def validate_file_extension(value):
     ext = os.path.splitext(value.name)[1]
     if not ext:
         raise ValidationError('File extension not found.')
-    valid_extensions = ['.jpeg', '.jpg', '.png']
-    if ext.lower() not in valid_extensions:
+    if not is_valid_file_extension(value.name):
         raise ValidationError('Unsupported file extension.')
 
 
@@ -67,20 +60,20 @@ class Image(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     image = models.ImageField(upload_to='images/', validators=[validate_file_extension])
     thumbnails = models.ManyToManyField(ThumbnailSize, through='ImageThumbnail')
-    expiring_image_link = models.URLField(max_length=2000, null=True, blank=True)
-    expiry_time = models.IntegerField(default=300, validators=[MinValueValidator(300), MaxValueValidator(30000)])
+    expiring_image_link = models.CharField(max_length=2000, null=True, blank=True)
+    expiry_time = models.IntegerField(
+        default=300, validators=[MinValueValidator(300), MaxValueValidator(30000)])
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
+        if kwargs.get('update_fields') is None or 'expiring_image_link' not in kwargs['update_fields']:
+            self.full_clean()
         super().save(*args, **kwargs)
 
     def get_thumbnail(self, thumbnail_size):
-        thumbnail_size_instance, created = ThumbnailSize.objects.get_or_create(height=thumbnail_size)
-
+        thumbnail_size_instance, _ = ThumbnailSize.objects.get_or_create(height=thumbnail_size)
         thumbnail, created = ImageThumbnail.objects.get_or_create(
-            image=self,
-            thumbnail_size=thumbnail_size_instance
-        )
+            image=self, thumbnail_size=thumbnail_size_instance)
 
         if created or not thumbnail.thumbnail:
             try:
@@ -91,10 +84,7 @@ class Image(models.Model):
                     image.save(thumb_io, format=image.format)
                     thumb_filename = f'{os.path.splitext(self.image.name)[0]}_{size}.png'
                     thumbnail.thumbnail.save(
-                        thumb_filename,
-                        File(thumb_io),
-                        save=True
-                    )
+                        thumb_filename, File(thumb_io), save=True)
             except Exception as e:
                 logging.error(f"An error occurred while opening the image: {e}")
                 return None

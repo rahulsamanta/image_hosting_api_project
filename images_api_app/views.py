@@ -7,12 +7,16 @@ from rest_framework import generics, permissions, status, serializers
 from rest_framework.response import Response
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature, BadTimeSignature
 
-from .models import AccountTier, Image, ThumbnailSize
-from .serializers import AccountTierSerializer, ImageSerializer, ThumbnailSizeSerializer
+from .models import AccountTier, Image, ThumbnailSize, UserProfile
+from .serializers import (
+    AccountTierSerializer, ImageSerializer, ThumbnailSizeSerializer, UserProfileSerializer
+)
+from .utils import is_valid_file_extension
 
 
 def serve_image(request, signed_url):
     s = URLSafeTimedSerializer(settings.SECRET_KEY)
+
     try:
         data = s.loads(signed_url)
         expiring_url = data['url']
@@ -22,7 +26,10 @@ def serve_image(request, signed_url):
         file_path = settings.MEDIA_ROOT + url_path.replace(
             settings.MEDIA_URL, '/'
         )
+        if not os.path.exists(file_path) or os.path.isdir(file_path):
+            return HttpResponseForbidden('Image not found')
         return FileResponse(open(file_path, 'rb'))
+
     except SignatureExpired:
         return HttpResponseForbidden('The image link has expired')
     except (BadSignature, BadTimeSignature):
@@ -53,6 +60,12 @@ class ThumbnailSizeDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAdminUser]
 
 
+class UserProfileListView(generics.ListCreateAPIView):
+    queryset = UserProfile.objects.all()
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+
 class ImageUploadView(generics.CreateAPIView):
     """
     Upload JPG or PNG image.
@@ -67,20 +80,23 @@ class ImageUploadView(generics.CreateAPIView):
         """
         uploaded_file = self.request.FILES.get('image')
         if uploaded_file:
-            if os.path.splitext(uploaded_file.name)[1].lower() in ['.jpeg', '.jpg', '.png']:
+            if is_valid_file_extension(uploaded_file.name):
                 expiry_time = self.request.data.get('expiry_time', 300)
                 try:
                     expiry_time = int(expiry_time)
                     if expiry_time in range(300, 30001):
-                        serializer.save(user=self.request.user, image=uploaded_file, expiry_time=expiry_time)
+                        serializer.save(
+                            user=self.request.user, image=uploaded_file, expiry_time=expiry_time)
                     else:
                         raise serializers.ValidationError(
                             'Image expiry link duration must be between 300 and 30000.'
                         )
                 except ValueError:
-                    raise serializers.ValidationError('Image expiry link duration must be numbers.')
+                    raise serializers.ValidationError(
+                        'Image expiry link duration must be numbers.')
             else:
-                raise serializers.ValidationError('Unsupported file extension. Only JPG and PNG are supported.')
+                raise serializers.ValidationError(
+                    'Unsupported file extension. Only JPG and PNG are supported.')
         else:
             raise serializers.ValidationError('Image file not provided.')
 
