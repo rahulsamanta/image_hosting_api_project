@@ -1,5 +1,5 @@
 coverage==6.2
-Django==3.2.21
+Django==3.2.23
 djangorestframework==3.14.0
 itsdangerous==2.0.1
 Pillow==8.4.0
